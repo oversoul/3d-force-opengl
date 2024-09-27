@@ -10,12 +10,12 @@
 #include <stdlib.h>
 
 #include <jsoncpp/json/json.h>
+#include <thread>
 
-#include "camera.h"
+#include "graph.h"
 #include "layout.h"
 #include "line.h"
 #include "solid_sphere.h"
-#include "springy.h"
 #include "websocket.h"
 
 #define WIN_WIDTH 1024
@@ -24,7 +24,6 @@
 float yLocation = 0.0f; // Keep track of our position on the y axis.
 
 Graph graph;
-WebSocketServer server;
 
 float damping = 0.1;
 float stiffness = 200.0;
@@ -51,34 +50,73 @@ glm::mat4 projection;
 SolidSphere sphere(0.4f, 12, 24);
 Line line(glm::vec3(0, 0, 0), glm::vec3(0, 0, 0));
 
-// void jsonLoader(Graph *graph, const char *file) {
-//   Json::Value jsonValue;
-//   std::ifstream sourceFile(file, std::ifstream::binary);
-//   if (!sourceFile.is_open()) {
-//     std::cerr << "Could not open the file!" << std::endl;
-//     exit(1);
-//   }
-//
-//   sourceFile >> jsonValue;
-//
-//   std::vector<Node *> nodes = {};
-//   std::map<std::string, int> idToIndex = {};
-//
-//   int index = 0;
-//   for (auto val : jsonValue["nodes"]) {
-//     idToIndex[val["id"].asString()] = index;
-//     auto n = graph->newNode();
-//     nodes.push_back(n);
-//     ++index;
-//   }
-//
-//   for (auto link : jsonValue["links"]) {
-//     auto sId = idToIndex[link["source"].asString()];
-//     auto tId = idToIndex[link["target"].asString()];
-//     graph->newEdge(nodes[sId], nodes[tId]);
-//   }
-// }
-//
+void jsonLoader(Graph *graph, const char *file) {
+  Json::Value jsonValue;
+  std::ifstream sourceFile(file, std::ifstream::binary);
+  if (!sourceFile.is_open()) {
+    std::cerr << "Could not open the file!" << std::endl;
+    exit(1);
+  }
+
+  sourceFile >> jsonValue;
+
+  std::vector<Node *> nodes = {};
+  std::map<std::string, int> idToIndex = {};
+
+  int index = 0;
+  for (auto val : jsonValue["nodes"]) {
+    idToIndex[val["id"].asString()] = index;
+    auto n = graph->newNode();
+    nodes.push_back(n);
+    ++index;
+  }
+
+  for (auto link : jsonValue["links"]) {
+    auto sId = idToIndex[link["source"].asString()];
+    auto tId = idToIndex[link["target"].asString()];
+    graph->newEdge(nodes[sId], nodes[tId]);
+  }
+}
+
+Color hexToColor(const char *hex) {
+  Color color = {1.0f, 1.0f, 1.0f};
+  if (hex == NULL || strlen(hex) == 0) {
+    return color;
+  }
+
+  // Remove '#' if it exists
+  if (hex[0] == '#') {
+    hex++;
+  }
+
+  // Determine length (6 or 8 characters)
+  int len = strlen(hex);
+
+  // Parse hex string
+  unsigned int hexValue;
+  std::stringstream ss;
+  ss << std::hex << hex;
+  ss >> hexValue;
+
+  if (len == 6) {
+    // 6 characters: RGB format
+    color.r = ((hexValue >> 16) & 0xFF) / 255.0f;
+    color.g = ((hexValue >> 8) & 0xFF) / 255.0f;
+    color.b = (hexValue & 0xFF) / 255.0f;
+  } else if (len == 8) {
+    // 8 characters: RGBA format
+    color.r = ((hexValue >> 24) & 0xFF) / 255.0f;
+    color.g = ((hexValue >> 16) & 0xFF) / 255.0f;
+    color.b = ((hexValue >> 8) & 0xFF) / 255.0f;
+  } else {
+    // Invalid format, handle error or default behavior
+    // std::cerr << "Invalid hex color format." << std::endl;
+    color.r = color.g = color.b = 1.0f;
+  }
+
+  return color;
+}
+
 void draw_graph(float yloc) {
   (void)yloc;
 
@@ -133,7 +171,6 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action, 
   (void)mods;
   (void)scancode;
   if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
-    server.stop();
     glfwSetWindowShouldClose(window, GLFW_TRUE);
   }
   if (key == GLFW_KEY_W) {
@@ -218,10 +255,11 @@ std::function<void()> loop;
 void main_loop() { loop(); }
 
 int main(void) {
+  WebSocketServer server;
 
   std::thread server_thread(&WebSocketServer::run, &server, 9002);
 
-  std::cout << "WebSocket server running on thread. Press Enter to stop." << std::endl;
+  std::cout << "WebSocket server running on :9002" << std::endl;
 
   std::cout << "Starting visu..." << std::endl;
   srand(time(NULL));
@@ -259,7 +297,7 @@ int main(void) {
   glfwWindowHint(GLFW_SAMPLES, 4); // 4 samples for MSAA
   glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_TRUE);
 
-  /* Set rendering settings */
+  // Set rendering settings
   projection = glm::perspective(
       // FOV & aspect
       glm::radians(60.0f), (GLfloat)WIN_WIDTH / (GLfloat)WIN_HEIGHT,
@@ -275,83 +313,32 @@ int main(void) {
 
   // INIT
   // jsonLoader(&graph, "data/structure.json");
-  // jsonLoader(&graph, "data/miserables.json");
+  jsonLoader(&graph, "data/miserables.json");
 
-  server.set_message_handler([](websocketpp::connection_hdl, socketServer::message_ptr msg) {
-    auto val = msg->get_payload();
+  server.set_message_handler([](std::string msg) {
+    printf("MSG: %s\n", msg.c_str());
 
-    std::string s = val;
-    std::string delimiter = " ";
-    std::string command = s.substr(0, s.find(delimiter));
+    Json::Value jsonData;
+    std::istringstream msgStream(msg);
+    msgStream >> jsonData;
 
-    if (command == "add") {
-      s.erase(0, s.find(delimiter) + delimiter.length());
-      std::string type = s.substr(0, s.find(delimiter));
-      if (type == "node") {
-        s.erase(0, s.find(delimiter) + delimiter.length());
+    std::string cmd = jsonData["command"].asString();
 
-        graph.addNodes({s});
+    if (cmd == "add") {
+      std::string name = jsonData["name"].asString();
+      auto n = graph.addNode(name);
+      std::string color = jsonData["color"].asString();
+      if (color != "") {
+        n->data.color = hexToColor(color.c_str());
       }
-    } else if (command == "connect") {
-      s.erase(0, s.find(delimiter) + delimiter.length());
-      std::string n1 = s.substr(0, s.find(delimiter));
-      s.erase(0, s.find(delimiter) + delimiter.length());
-      std::string n2 = s;
-      if (n1 == n2) {
-        printf("Can't add a connection between the same nodes.\n");
-        return;
-      }
-      graph.addEdges({{n1, n2}});
+    } else if (cmd == "connect") {
+      std::string target = jsonData["target"].asString();
+      std::string source = jsonData["source"].asString();
+      graph.addEdge({target, source});
+    } else {
+      printf("Unknown command: %s\n", cmd.c_str());
     }
   });
-
-  /*
-  auto dennis = graph.newNode();
-  dennis->data.color.r = 0;
-  dennis->data.color.b = 255;
-
-  auto michael = graph.newNode();
-  michael->data.color.r = 0;
-  michael->data.color.g = 255;
-
-  auto jessica = graph.newNode();
-  auto timothy = graph.newNode();
-  auto barbara = graph.newNode();
-  auto franklin = graph.newNode();
-  auto monty = graph.newNode();
-  auto james = graph.newNode();
-  auto bianca = graph.newNode();
-
-  graph.newEdge(dennis, michael);
-  graph.newEdge(michael, dennis);
-  graph.newEdge(michael, jessica);
-  graph.newEdge(jessica, barbara);
-  graph.newEdge(michael, timothy);
-  graph.newEdge(franklin, monty);
-  graph.newEdge(dennis, monty);
-  graph.newEdge(monty, james);
-  graph.newEdge(barbara, timothy);
-  graph.newEdge(dennis, bianca);
-  graph.newEdge(bianca, monty);
-  */
-
-  /*
-  graph.addNodes({"Dennis", "Michael", "Jessica", "Timothy", "Barbara"});
-  graph.addNodes({"Amphitryon", "Alcmene", "Iphicles", "Heracles"});
-
-  graph.addEdges({
-      {"Dennis", "Michael"},
-      {"Michael", "Dennis"},
-      {"Michael", "Jessica"},
-      {"Jessica", "Barbara"},
-      {"Michael", "Timothy"},
-      {"Amphitryon", "Alcmene"},
-      {"Alcmene", "Amphitryon"},
-      {"Amphitryon", "Iphicles"},
-      {"Amphitryon", "Heracles"},
-      {"Barbara", "Timothy"},
-  });
-  */
 
   int frames = 0;
   double t0 = glfwGetTime();
