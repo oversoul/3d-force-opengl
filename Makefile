@@ -1,6 +1,6 @@
 BUILD_DIR = build
 INCLUDE_DIR = include
-CFLAGS = -std=c++17 -Wall -Iinclude -I. -Wextra -Wall -Wno-pragmas
+CFLAGS = -std=c++17 -Wall -Iinclude -I. -Wextra -Wall -Wno-pragmas -ggdb
 LDFLAGS = `pkg-config --cflags --libs jsoncpp` -lGL -lGLEW -lGLU -lglfw
 
 CC = clang++-14

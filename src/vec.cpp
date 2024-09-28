@@ -6,7 +6,7 @@ Vec::Vec(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
 
 Vec *Vec::random() {
   srand(time(NULL));
-  double lower_bound = 0;
+  double lower_bound = -10;
   double upper_bound = 10;
   std::random_device rd;
   std::minstd_rand gen(rd());

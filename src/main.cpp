@@ -120,34 +120,45 @@ Color hexToColor(const char *hex) {
 void draw_graph(float yloc) {
   (void)yloc;
 
-  for (auto e : graph.edges) {
-    auto sp = layout->point(e->source);
-    auto tp = layout->point(e->target);
+  // for (auto e : graph.edges) {
+  //   auto sp = layout->point(e->source);
+  //   auto tp = layout->point(e->target);
+  //
+  //   line.setVertices(                            //
+  //       glm::vec3(sp->p->x, sp->p->y, sp->p->z), //
+  //       glm::vec3(tp->p->x, tp->p->y, tp->p->z)  //
+  //   );
+  //
+  //   line.setMVP(projection * view);
+  //   line.draw(&camera);
+  // }
 
-    line.setVertices(                            //
-        glm::vec3(sp->p->x, sp->p->y, sp->p->z), //
-        glm::vec3(tp->p->x, tp->p->y, tp->p->z)  //
-    );
+  // sphere.generateOffsets(); // just for the clean for now
+  // sphere.debugOffsets();
 
-    line.setMVP(projection * view);
-    line.draw(&camera);
-  }
+  // for (auto n : graph.nodes) {
+  //   auto p = layout->point(n);
+  //   sphere.addOffset(glm::vec3(p->p->x, p->p->y, p->p->z));
+  // }
 
-  for (auto n : graph.nodes) {
-    auto p = layout->point(n);
-    glm::mat4 model = glm::mat4(1.0f);
-    model = glm::translate(model, glm::vec3(p->p->x, p->p->y, p->p->z));
-
-    // float radius = 1.0f;
-    // glm::vec3 scale = glm::vec3(radius, radius, radius);
-    // model = glm::scale(model, scale);
-
-    auto c = n->data.color;
-    sphere.setColor({c.r, c.g, c.b});
-
-    sphere.setMVP(model, view, projection);
-    sphere.draw(&camera);
-  }
+  glm::mat4 model = glm::mat4(1.0f);
+  sphere.setMVP(model, view, projection);
+  sphere.draw(&camera);
+  // for (auto n : graph.nodes) {
+  //   auto p = layout->point(n);
+  //   glm::mat4 model = glm::mat4(1.0f);
+  //   model = glm::translate(model, glm::vec3(p->p->x, p->p->y, p->p->z));
+  //
+  //   // float radius = 1.0f;
+  //   // glm::vec3 scale = glm::vec3(radius, radius, radius);
+  //   // model = glm::scale(model, scale);
+  //
+  //   auto c = n->data.color;
+  //   sphere.setColor({c.r, c.g, c.b});
+  //
+  //   sphere.setMVP(model, view, projection);
+  //   sphere.draw(&camera);
+  // }
 }
 
 void render() {
@@ -172,6 +183,17 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action, 
   (void)scancode;
   if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
     glfwSetWindowShouldClose(window, GLFW_TRUE);
+  }
+  if (key == GLFW_KEY_P) {
+    for (auto i = 0; i < 10; ++i) {
+      auto pos = Vec::random();
+      sphere.addOffset({pos->x, pos->y, pos->z}); // Top of the sphere
+      delete pos;
+    }
+    // sphere.addOffset({1.0f, 1.0f, 1.0f});
+  }
+  if (key == GLFW_KEY_I) {
+    sphere.debugOffsets();
   }
   if (key == GLFW_KEY_W) {
     camera.update_view_mat(0, 0.8);
@@ -254,6 +276,10 @@ void framebuffer_size_callback(GLFWwindow *window, int width, int height) {
 std::function<void()> loop;
 void main_loop() { loop(); }
 
+void openglCallbackFunction(GLenum, GLenum, GLuint, GLenum, GLsizei, const GLchar *message, const void *) {
+  printf("MES: %s\n", message);
+}
+
 int main(void) {
   WebSocketServer server;
 
@@ -301,19 +327,32 @@ int main(void) {
   projection = glm::perspective(
       // FOV & aspect
       glm::radians(60.0f), (GLfloat)WIN_WIDTH / (GLfloat)WIN_HEIGHT,
-      // Near and far planes
-      0.1f, 500.0f);
+      0.1f,  // Near far planes
+      500.0f //
+  );
 
   sphere.init();
   line.init();
+  glEnable(GL_DEBUG_OUTPUT);
+  glDebugMessageCallback(openglCallbackFunction, nullptr);
 
   glEnable(GL_DEPTH_TEST);
   glEnable(GL_LINE_SMOOTH);
-  glEnable(GL_LINE_STRIP_ADJACENCY);
+  glEnable(GL_CULL_FACE);
 
   // INIT
   // jsonLoader(&graph, "data/structure.json");
-  jsonLoader(&graph, "data/miserables.json");
+  // jsonLoader(&graph, "data/big.json");
+
+  for (auto n : graph.nodes) {
+    auto p = layout->point(n);
+    sphere.addOffset(glm::vec3(p->p->x, p->p->y, p->p->z));
+  }
+  // for (size_t i = 0; i < 100000; ++i) {
+  //   std::string text = "Player ";
+  //   text += std::to_string(i);
+  //   graph.addNode(text);
+  // }
 
   server.set_message_handler([](std::string msg) {
     printf("MSG: %s\n", msg.c_str());
@@ -351,7 +390,14 @@ int main(void) {
       camera.update_view_mat(0.5, 0);
     }
 
+    // auto start = std::chrono::high_resolution_clock::now();
+    // Your rendering loop
+
     render();
+
+    // auto end = std::chrono::high_resolution_clock::now();
+    // auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    // std::cout << "Render time: " << duration.count() / 1000 << " miliseconds" << std::endl;
 
     double t = glfwGetTime();
     if ((t - t0) > 1.0 || frames == 0) {

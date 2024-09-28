@@ -1,7 +1,13 @@
 #include "layout.h"
 
-ForceDirected::ForceDirected(Graph *graph, float stiffness, float repulsion, float damping, float minEnergyThreshold,
-                             float maxSpeed) {
+ForceDirected::ForceDirected( //
+    Graph *graph,             //
+    float stiffness,          //
+    float repulsion,          //
+    float damping,            //
+    float minEnergyThreshold, //
+    float maxSpeed            //
+) {
 
   this->graph = graph;
   this->damping = damping;                       // velocity damping factor
