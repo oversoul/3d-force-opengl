@@ -118,6 +118,7 @@ void Graph::addEdges(std::vector<std::pair<std::string, std::string>> args) {
 }
 
 Node *Graph::addNode(std::string name) {
+
   auto node = new Node(name);
   addNode(node);
   return node;

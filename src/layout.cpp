@@ -7,7 +7,8 @@ ForceDirected::ForceDirected( //
     float damping,            //
     float minEnergyThreshold, //
     float maxSpeed            //
-) {
+    )
+    : time(0), movementAmplitude(0.1f), movementFrequency(0.5f) {
 
   this->graph = graph;
   this->damping = damping;                       // velocity damping factor
@@ -15,137 +16,165 @@ ForceDirected::ForceDirected( //
   this->repulsion = repulsion;                   // repulsion constant
   this->stiffness = stiffness;                   // spring stiffness constant
   this->minEnergyThreshold = minEnergyThreshold; // threshold used to determine render stop
-
-  nodePoints = {};  // keep track of points associated with nodes
-  edgeSprings = {}; // keep track of springs associated with edges
-}
-
-Point *ForceDirected::point(Node *node) {
-  if (nodePoints.count(node->id) == 0) {
-    auto mass = 1.0;
-    // auto mass = (node.data.mass != undefined) ? node.data.mass : 1.0;
-    nodePoints[node->id] = new Point(Vec::random(), mass);
-  }
-
-  return nodePoints[node->id];
-}
-
-Spring *ForceDirected::spring(Edge *edge) {
-  if (edgeSprings.count(edge->id) == 0) {
-    auto length = /*(edge.data.length != undefined) ? edge.data.length :*/ 1.0;
-
-    Spring *existingSpring = nullptr;
-
-    auto from = graph->getEdges(edge->source, edge->target);
-
-    for (auto e : from) {
-      if (existingSpring == nullptr && edgeSprings.count(e->id)) {
-        existingSpring = edgeSprings[e->id];
-      }
-    }
-
-    if (existingSpring != nullptr) {
-      return new Spring(existingSpring->point1, existingSpring->point2, 0.0, 0.0);
-    }
-
-    auto to = graph->getEdges(edge->target, edge->source);
-
-    for (auto e : from) {
-      if (existingSpring == nullptr && edgeSprings.count(e->id)) {
-        existingSpring = edgeSprings[e->id];
-      }
-    }
-
-    if (existingSpring != nullptr) {
-      return new Spring(existingSpring->point2, existingSpring->point1, 0.0, 0.0);
-    }
-
-    edgeSprings[edge->id] = new Spring(this->point(edge->source), this->point(edge->target), length, this->stiffness);
-  }
-
-  return edgeSprings[edge->id];
+  barnesHut = new BarnesHut(0.5f);
 }
 
 // physics
 void ForceDirected::applyCoulombsLaw() {
-  for (auto n1 : graph->nodes) {
-    auto point1 = point(n1);
-    for (auto n2 : graph->nodes) {
-      auto point2 = point(n2);
-      if (point1 != point2) {
-        auto d = point1->p->subtract(point2->p);
-        auto distance = d->magnitude() + 0.1; // avoid massive forces at small distances (and divide by zero)
-        auto direction = d->normalise();
 
-        // apply force to each end point
-        point1->applyForce(direction->multiply(repulsion)->divide(distance * distance * 0.5));
-        point2->applyForce(direction->multiply(repulsion)->divide(distance * distance * -0.5));
-      }
-    }
+  barnesHut->buildTree(graph->nodes);
+
+  for (auto &node : graph->nodes) {
+    barnesHut->calculateForces(node, repulsion);
   }
+
+  // double cutoff_radius = 100.0;                                 // Choose an appropriate value for your scale
+  // double cutoff_radius_squared = cutoff_radius * cutoff_radius; // Pre-compute for efficiency
+  //
+  // for (auto point1 : graph->nodes) {
+  //   for (auto point2 : graph->nodes) {
+  //     if (point1 != point2) {
+  //       auto d = point1->p.subtract(point2->p);
+  //
+  //       double distance_squared = d.x * d.x + d.y * d.y + d.z * d.z;
+  //
+  //       if (distance_squared < cutoff_radius_squared) {
+  //         // Calculate and apply forces as normal
+  //         auto distance = d.magnitude() + 0.1; // avoid massive forces at small distances (and divide by zero)
+  //         auto direction = d.normalise();
+  //
+  //         // apply force to each end point
+  //         point1->applyForce(direction.multiply(repulsion).divide(distance * distance * 0.5));
+  //         point2->applyForce(direction.multiply(repulsion).divide(distance * distance * -0.5));
+  //       }
+  //     }
+  //   }
+  // }
 }
 
 void ForceDirected::applyHookesLaw() {
   for (auto e : graph->edges) {
-    auto s = spring(e);
-    auto d = s->point2->p->subtract(s->point1->p); // the direction of the spring
-    auto displacement = s->length - d->magnitude();
-    auto direction = d->normalise();
+    // auto s = spring1(e);
+    auto d = e->target->p.subtract(e->source->p); // the direction of the spring
+    auto displacement = e->length - d.magnitude();
+    auto direction = d.normalise();
 
     // apply force to each end point
-    s->point1->applyForce(direction->multiply(s->k * displacement * -0.5));
-    s->point2->applyForce(direction->multiply(s->k * displacement * 0.5));
+    e->source->applyForce(direction.multiply(e->k * displacement * -0.5));
+    e->target->applyForce(direction.multiply(e->k * displacement * 0.5));
   }
+
+  // for (const auto &edge : graph->edges) {
+  //   Node *source = edge->source;
+  //   Node *target = edge->target;
+  //
+  //   Vec direction = target->p.subtract(source->p);
+  //   float distance = direction.magnitude();
+  //
+  //   // Avoid division by zero
+  //   if (distance > 0) {
+  //     // Calculate the spring force
+  //     float force = stiffness * (distance - edge->length);
+  //     Vec springForce = direction.normalise().multiply(force);
+  //
+  //     // Apply force to both nodes
+  //     source->applyForce(springForce);
+  //     target->applyForce(springForce.multiply(-1));
+  //   }
+  // }
 }
 
 void ForceDirected::attractToCentre() {
-  for (auto n : graph->nodes) {
-    auto pt = point(n);
-    auto direction = pt->p->multiply(-1.0);
-    pt->applyForce(direction->multiply(repulsion / 50.0));
+  for (auto pt : graph->nodes) {
+    auto direction = pt->p.multiply(-1.0);
+    pt->applyForce(direction.multiply(repulsion / 50.0));
   }
 }
 
 void ForceDirected::updateVelocity(float timestep) {
-  for (auto n : graph->nodes) {
-    auto pt = point(n);
+  for (auto pt : graph->nodes) {
     // Is this, along with updatePosition below, the only places that your
     // integration code exist?
-    pt->v = pt->v->add(pt->a->multiply(timestep))->multiply(damping);
-    if (pt->v->magnitude() > maxSpeed) {
-      pt->v = pt->v->normalise()->multiply(maxSpeed);
+    pt->v = pt->v.add(pt->a.multiply(timestep)).multiply(damping);
+    if (pt->v.magnitude() > maxSpeed) {
+      pt->v = pt->v.normalise().multiply(maxSpeed);
     }
-    pt->a = new Vec(0, 0, 0);
+    pt->a = Vec(0, 0, 0);
   }
 }
 
 void ForceDirected::updatePosition(float timestep) {
-  for (auto n : graph->nodes) {
-    auto pt = point(n);
+  for (auto pt : graph->nodes) {
     // Same question as above; along with updateVelocity, is this all of
     // your integration code?
-    pt->p = pt->p->add(pt->v->multiply(timestep));
-  }
-}
+    pt->p = pt->p.add(pt->v.multiply(timestep));
 
-void ForceDirected::tick(float timestep) {
-  applyCoulombsLaw();
-  applyHookesLaw();
-  attractToCentre();
-  updateVelocity(timestep);
-  updatePosition(timestep);
+    // TODO: mix
+    // Is this, along with updatePosition below, the only places that your
+    // integration code exist?
+    pt->v = pt->v.add(pt->a.multiply(timestep)).multiply(damping);
+    if (pt->v.magnitude() > maxSpeed) {
+      pt->v = pt->v.normalise().multiply(maxSpeed);
+    }
+    pt->a = Vec(0, 0, 0);
+  }
 }
 
 // Calculate the total kinetic energy of the system
 float ForceDirected::totalEnergy() {
   auto energy = 0.0;
-  for (auto node : graph->nodes) {
-    auto pt = point(node);
-    auto speed = pt->v->magnitude();
+  for (auto pt : graph->nodes) {
+    auto speed = pt->v.magnitude();
     energy += 0.5 * pt->m * speed * speed;
   }
 
   return energy;
 }
 
-void ForceDirected::start() { tick(0.03); }
+void ForceDirected::tick(float timestep) {
+  if (!stopped) {
+    applyCoulombsLaw();
+    applyHookesLaw();
+    attractToCentre();
+    // updateVelocity(timestep);
+    updatePosition(timestep);
+
+    if (totalEnergy() <= minEnergyThreshold) {
+      stopped = true;
+
+      originalPositions.clear();
+      for (auto node : graph->nodes) {
+        originalPositions.push_back(node->p);
+      }
+    }
+  } else {
+    // applySubtleMovement(0.03);
+  }
+
+  time += timestep;
+}
+
+void ForceDirected::start() {
+  if (graph->nodes.size() == 0) {
+    return;
+  }
+
+  tick(0.03);
+}
+
+void ForceDirected::applySubtleMovement(float) {
+  for (size_t i = 0; i < graph->nodes.size(); ++i) {
+    auto node = graph->nodes[i];
+    const Vec &originalPos = originalPositions[i];
+
+    // Calculate a subtle movement based on time and node's original position
+    float dx = movementAmplitude * sin(movementFrequency * time + originalPos.x);
+    float dy = movementAmplitude * cos(movementFrequency * time + originalPos.y);
+    float dz = movementAmplitude * sin(movementFrequency * time + originalPos.z);
+
+    // Apply the movement relative to the original position
+    node->p.x = originalPos.x + dx;
+    node->p.y = originalPos.y + dy;
+    node->p.z = originalPos.z + dz;
+  }
+}

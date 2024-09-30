@@ -25,13 +25,19 @@ float yLocation = 0.0f; // Keep track of our position on the y axis.
 
 Graph graph;
 
+// float damping = 0.1;
+// float stiffness = 200.0;
+// float repulsion = 1000.0;
+// float minEnergyThreshold = 0.00001;
+
 float damping = 0.1;
+float maxSpeed = 10000;
 float stiffness = 200.0;
-float repulsion = 4000.0;
-float minEnergyThreshold = 0.00001;
+float repulsion = 1000.0;
+float minEnergyThreshold = 80;
 
 Camera camera(WIN_WIDTH, WIN_HEIGHT);
-ForceDirected *layout = new ForceDirected(&graph, stiffness, repulsion, damping, minEnergyThreshold);
+ForceDirected *layout = new ForceDirected(&graph, stiffness, repulsion, damping, minEnergyThreshold, maxSpeed);
 
 float mouseX = 0;
 float mouseY = 0;
@@ -48,7 +54,6 @@ glm::mat4 view;
 glm::mat4 projection;
 
 SolidSphere sphere(0.4f, 12, 24);
-Line line(glm::vec3(0, 0, 0), glm::vec3(0, 0, 0));
 
 void jsonLoader(Graph *graph, const char *file) {
   Json::Value jsonValue;
@@ -117,30 +122,31 @@ Color hexToColor(const char *hex) {
   return color;
 }
 
+Line line(glm::vec3(0, 0, 0), glm::vec3(0, 0, 0));
 void draw_graph(float yloc) {
   (void)yloc;
 
-  // for (auto e : graph.edges) {
-  //   auto sp = layout->point(e->source);
-  //   auto tp = layout->point(e->target);
-  //
-  //   line.setVertices(                            //
-  //       glm::vec3(sp->p->x, sp->p->y, sp->p->z), //
-  //       glm::vec3(tp->p->x, tp->p->y, tp->p->z)  //
-  //   );
-  //
-  //   line.setMVP(projection * view);
-  //   line.draw(&camera);
-  // }
+  for (auto e : graph.edges) {
+    auto sp = e->source;
+    auto tp = e->target;
 
-  // sphere.generateOffsets(); // just for the clean for now
+    line.setVertices(                         //
+        glm::vec3(sp->p.x, sp->p.y, sp->p.z), //
+        glm::vec3(tp->p.x, tp->p.y, tp->p.z)  //
+    );
+
+    line.setMVP(projection * view);
+    line.draw(&camera);
+  }
+
+  sphere.generateOffsets(); // just for the clean for now
+
+  for (auto p : graph.nodes) {
+    // auto p = layout->point(n);
+    sphere.addOffset(glm::vec3(p->p.x, p->p.y, p->p.z));
+  }
+
   // sphere.debugOffsets();
-
-  // for (auto n : graph.nodes) {
-  //   auto p = layout->point(n);
-  //   sphere.addOffset(glm::vec3(p->p->x, p->p->y, p->p->z));
-  // }
-
   glm::mat4 model = glm::mat4(1.0f);
   sphere.setMVP(model, view, projection);
   sphere.draw(&camera);
@@ -187,8 +193,7 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action, 
   if (key == GLFW_KEY_P) {
     for (auto i = 0; i < 10; ++i) {
       auto pos = Vec::random();
-      sphere.addOffset({pos->x, pos->y, pos->z}); // Top of the sphere
-      delete pos;
+      sphere.addOffset({pos.x, pos.y, pos.z}); // Top of the sphere
     }
     // sphere.addOffset({1.0f, 1.0f, 1.0f});
   }
@@ -281,6 +286,30 @@ void openglCallbackFunction(GLenum, GLenum, GLuint, GLenum, GLsizei, const GLcha
 }
 
 int main(void) {
+
+  // size_t all = 10000;
+  // for (size_t i = 0; i < all; ++i) {
+  //   auto v = std::string("node-");
+  //   v += std::to_string(i);
+  //   graph.addNode(v);
+  // }
+  //
+  // for (size_t i = 0; i < all - 1; ++i) {
+  //   auto j = i + 1;
+  //   auto v = std::string("node-");
+  //   auto t = v + std::to_string(i);
+  //   auto s = v + std::to_string(j);
+  //   graph.addEdge({t, s});
+  // }
+  //
+  // auto start = std::chrono::high_resolution_clock::now();
+  //
+  // layout->start();
+  //
+  // auto end = std::chrono::high_resolution_clock::now();
+  // auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+  // std::cout << "Render time: " << duration.count() / 1000 << " miliseconds" << std::endl;
+
   WebSocketServer server;
 
   std::thread server_thread(&WebSocketServer::run, &server, 9002);
@@ -342,12 +371,20 @@ int main(void) {
 
   // INIT
   // jsonLoader(&graph, "data/structure.json");
+  // jsonLoader(&graph, "data/miserables.json");
   // jsonLoader(&graph, "data/big.json");
 
-  for (auto n : graph.nodes) {
-    auto p = layout->point(n);
-    sphere.addOffset(glm::vec3(p->p->x, p->p->y, p->p->z));
-  }
+  // printf("NODES: %zu\n", graph.nodes.size());
+
+  // graph.addNode("node-1");
+  // graph.addNode("node-2");
+  //
+  // graph.addEdge({"node-1", "node-2"});
+
+  // for (auto n : graph.nodes) {
+  //   // auto p = layout->point(n);
+  //   sphere.addOffset(glm::vec3(n->p.x, n->p.y, n->p.z));
+  // }
   // for (size_t i = 0; i < 100000; ++i) {
   //   std::string text = "Player ";
   //   text += std::to_string(i);

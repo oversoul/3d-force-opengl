@@ -18,7 +18,9 @@ void SolidSphere::init() {
 
   vertices.clear();
 
-  int gradation = 2;
+  radius = 0.2;
+
+  int gradation = 8;
   for (GLfloat alpha = 0.0; alpha < M_PI; alpha += M_PI / gradation) {
     for (GLfloat beta = 0.0; beta < 2.01 * M_PI; beta += M_PI / gradation) {
       auto x = radius * cos(beta) * sin(alpha);
