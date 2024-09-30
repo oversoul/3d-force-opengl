@@ -40,7 +40,6 @@ it opens port `9002` for websocket access and accept json commands.
 
 ## TODO
 
-- [ ] Add instance rendering
-- [ ] Add background
-- [ ] Add bloom effect?
+- [x] Add instance rendering
+- [ ] Add bloom effect
 
