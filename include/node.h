@@ -21,10 +21,10 @@ public:
     // this.data.mass
     // Data used by default renderer in springyui.js
     // this.data.label
-    m = 1.0; // mass
-    // p = Vec::random(); // position
-    // v = Vec(0, 0, 0);  // velocity
-    // a = Vec(0, 0, 0);  // acceleration
+    m = 1.0;           // mass
+    p = Vec::random(); // position
+    v = Vec(0, 0, 0);  // velocity
+    a = Vec(0, 0, 0);  // acceleration
   };
 
   Vec p;
@@ -34,5 +34,5 @@ public:
   std::string id;
   NodeData data = {.color = {1.0f, 1.0f, 1.0f}};
 
-  void applyForce(Vec force) { a = a.add(force.divide(m)); }
+  void applyForce(Vec *force) { a = a.add(force->divide(m)); }
 };
